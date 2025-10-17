@@ -1,0 +1,67 @@
+# Add workflow_dispatch so this workflow can be triggered on demand via the API or UI.
+# Keeps the existing push trigger so normal pushes continue to run it.
+name: scrape-on-demand
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'urls.json'
+      - 'selectors.json'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to run (branch or tag)'
+        required: true
+        default: 'main'
+      run_scrape:
+        description: 'Run scraping step'
+        required: false
+        default: 'true'
+      run_diff:
+        description: 'Run diff step'
+        required: false
+        default: 'true'
+      run_classify:
+        description: 'Run classify step'
+        required: false
+        default: 'true'
+      run_events:
+        description: 'Generate events.index.json'
+        required: false
+        default: 'true'
+      use_puppeteer:
+        description: 'Set USE_PUPPETEER env (true/false)'
+        required: false
+        default: 'false'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install dependencies
+        run: npm ci
+      - name: Run pipeline
+        env:
+          USE_PUPPETEER: ${{ inputs.use_puppeteer }}
+          HEADLESS: 'true'
+        run: |
+          echo "Inputs: run_scrape=${{ inputs.run_scrape }}, run_diff=${{ inputs.run_diff }}, run_classify=${{ inputs.run_classify }}, run_events=${{ inputs.run_events }}, use_puppeteer=${{ inputs.use_puppeteer }}"
+          if [ "${{ inputs.run_scrape }}" = "true" ]; then npm run scrape; fi
+          if [ "${{ inputs.run_diff }}" = "true" ]; then npm run diff || true; fi
+          if [ "${{ inputs.run_classify }}" = "true" ]; then npm run classify || true; fi
+          if [ "${{ inputs.run_events }}" = "true" ]; then npm run events || true; fi
+      - name: Archive events
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: events
+          path: data/events.index.json
